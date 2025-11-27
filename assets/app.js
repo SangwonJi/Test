@@ -275,6 +275,72 @@ function buildContinentsChips(){
   }
 }
 
+// --- Color functions (PUBGM_TRAFFIC style)
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+function rgbToHex(r, g, b) {
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function interpolateColor(color1, color2, factor) {
+  const rgb1 = hexToRgb(color1);
+  const rgb2 = hexToRgb(color2);
+  if (!rgb1 || !rgb2) return color1;
+  
+  const r = Math.round(rgb1.r + (rgb2.r - rgb1.r) * factor);
+  const g = Math.round(rgb1.g + (rgb2.g - rgb1.g) * factor);
+  const b = Math.round(rgb1.b + (rgb2.b - rgb1.b) * factor);
+  
+  return rgbToHex(r, g, b);
+}
+
+function colorFromChange(change, intensity = 1) {
+  // 색상 정의 (PUBGM_TRAFFIC 스타일)
+  const colors = {
+    pos3: '#30cc5a',  // +3%
+    pos2: '#2f9e4f',  // +2%
+    pos1: '#3e7c55',  // +1%
+    zero: '#414554',  // 0%
+    neg1: '#8b444e',  // -1%
+    neg2: '#bf4045',  // -2%
+    neg3: '#f63538'   // -3%
+  };
+  
+  // 변화율에 따라 색상 보간
+  if (change >= 3) {
+    return colors.pos3;
+  } else if (change >= 2) {
+    const factor = (change - 2) / 1;
+    return interpolateColor(colors.pos2, colors.pos3, factor);
+  } else if (change >= 1) {
+    const factor = (change - 1) / 1;
+    return interpolateColor(colors.pos1, colors.pos2, factor);
+  } else if (change > 0) {
+    const factor = change / 1;
+    return interpolateColor(colors.zero, colors.pos1, factor);
+  } else if (change === 0 || (change > -0.5 && change < 0.5)) {
+    return colors.zero;
+  } else if (change > -1) {
+    const factor = Math.abs(change) / 1;
+    return interpolateColor(colors.zero, colors.neg1, factor);
+  } else if (change > -2) {
+    const factor = (Math.abs(change) - 1) / 1;
+    return interpolateColor(colors.neg1, colors.neg2, factor);
+  } else if (change > -3) {
+    const factor = (Math.abs(change) - 2) / 1;
+    return interpolateColor(colors.neg2, colors.neg3, factor);
+  } else {
+    return colors.neg3;
+  }
+}
+
 function renderHeatmap(){
   const {rows,dateStr} = normalizeLatestSnapshot();
   const thrUp = parseFloat($('#thrUp').value)||state.thrUp;
@@ -290,89 +356,115 @@ function renderHeatmap(){
     return;
   }
 
-  // Build treemap vectors
-  const labels=[], parents=[], values=[], texts=[], colors=[], codes=[];
+  // Build treemap arrays (PUBGM_TRAFFIC style)
+  let ids=[], labels=[], parents=[], values=[], colors=[], text=[], custom=[], codes=[];
   
-  // 대륙별 값 합계 계산
-  const contValues = new Map();
-  for(const r of filtered){
-    const cont = r.continent;
-    const val = Math.max(0.0001, isNaN(r.value)?0.0001:r.value);
-    contValues.set(cont, (contValues.get(cont)||0) + val);
-  }
+  // 대륙별로 그룹화
+  const groups = {};
+  filtered.forEach((r, i) => {
+    const cont = r.continent || 'Unknown';
+    if(!groups[cont]) groups[cont] = {countries: [], values: [], changes: [], codes: []};
+    groups[cont].countries.push(r.name);
+    groups[cont].values.push(Math.max(0.0001, isNaN(r.value)?0.0001:r.value));
+    groups[cont].changes.push(r.change != null && !isNaN(r.change) ? r.change : 0);
+    groups[cont].codes.push(r.code);
+  });
   
-  // Add continent nodes (부모 노드)
-  const conts = Array.from(new Set(filtered.map(r=>r.continent)));
-  for(const c of conts){
-    labels.push(c); 
-    parents.push(''); 
-    values.push(contValues.get(c) || 0.001); 
-    texts.push(c); 
-    colors.push('rgba(100,100,120,0.3)'); 
+  // 대륙을 값 합계 기준으로 정렬
+  const continents = Object.keys(groups).sort((a,b) => {
+    const sumA = groups[a].values.reduce((x,y)=>x+y,0);
+    const sumB = groups[b].values.reduce((x,y)=>x+y,0);
+    return sumB - sumA;
+  });
+
+  continents.forEach(cont => {
+    const g = groups[cont];
+    const total = g.values.reduce((a,b)=>a+b,0);
+    const contId = `continent:${cont}`;
+    
+    // 대륙 노드 추가 (PUBGM_TRAFFIC 스타일)
+    const continentTextShadow = 'text-shadow: 2px 2px 4px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.6);';
+    ids.push(contId);
+    labels.push(cont);
+    parents.push('');
+    values.push(total);
+    colors.push('#262931');
+    text.push(`<b style="font-size:86.4px;font-weight:900;letter-spacing:2px;color:#FFFFFF;${continentTextShadow}">${cont}</b>`);
+    custom.push([null, null, cont]);
     codes.push('');
-  }
-  
-  function colorForChange(ch){
-    if(ch==null || isNaN(ch)) return 'rgba(128,128,128,0.5)';
-    // diverging red->grey->green
-    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
-    const t = clamp((ch+10)/20, 0, 1); // -10% .. +10%
-    const r = Math.round(255*(1-t));
-    const g = Math.round(255*(t));
-    const b = 80;
-    return `rgba(${r},${g},${b},0.85)`;
-  }
+    
+    // 국가별 최대 변화량 계산 (색상 강도용)
+    const maxAbsChange = g.changes.length > 0 ? Math.max(...g.changes.map(c => Math.abs(c))) : 1;
+    const small = 0.010; // threshold for showing change percentage
+    const countryFontSize = 20; // 고정 폰트 크기
+    
+    g.countries.forEach((country, i) => {
+      const revenue = g.values[i];
+      const change = g.changes[i];
+      const share = revenue / total;
+      const code = g.codes[i];
+      
+      // 변화량에 따른 강도 계산
+      const changeIntensity = maxAbsChange > 0 ? Math.abs(change) / maxAbsChange : 0;
+      const col = colorFromChange(change, changeIntensity);
+      
+      ids.push(`country:${cont}:${country}`);
+      labels.push(country);
+      parents.push(contId);
+      values.push(revenue);
+      colors.push(col);
+      codes.push(code);
+      
+      // 텍스트 생성 (PUBGM_TRAFFIC 스타일)
+      const textShadow = 'text-shadow: 1px 1px 3px rgba(0,0,0,0.7), 0 0 4px rgba(0,0,0,0.5);';
+      let t = '';
+      if(share >= small){
+        t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b><br><b style="font-size:${Math.max(12,countryFontSize*0.75)}px;font-weight:bold;color:#FFFFFF;${textShadow}">${change>=0?'+':''}${change.toFixed(1)}%</b>`;
+      } else {
+        t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b>`;
+      }
+      text.push(t);
+      custom.push([change, revenue, cont]);
+    });
+  });
 
-  // 국가 노드 추가
-  for(const r of filtered){
-    labels.push(r.name);
-    parents.push(r.continent);
-    const val = Math.max(0.0001, isNaN(r.value)?0.0001:r.value);
-    values.push(val);
-    const ch = r.change;
-    texts.push(`${r.name}<br>값: ${fmt(r.value)}<br>변화: ${ch!=null && !isNaN(ch)? ch.toFixed(2)+'%':'N/A'}`);
-    colors.push(colorForChange(ch));
-    codes.push(r.code);
-  }
+  const height = 900; // fixed height (PUBGM_TRAFFIC style)
 
-  const data = [{
+  const trace = {
     type:'treemap',
-    labels, 
-    parents, 
-    values, 
-    text:texts, 
-    textinfo:'label+text', 
-    hoverinfo:'text',
+    ids, labels, parents, values,
+    text, textinfo:'text', textposition:'middle center',
     marker:{ 
-      colors,
-      line: { width: 1, color: 'rgba(0,0,0,0.1)' }
+      colors, 
+      line:{width:1, color:'#000000'}, 
+      depthfade:false 
     },
-    branchvalues:'total',
-    tiling: {
-      packing: 'squarify',
-      squarifyratio: 1
-    }
-  }];
-
-  const layout = {
-    paper_bgcolor:'rgba(0,0,0,0)',
-    plot_bgcolor:'rgba(0,0,0,0)',
-    margin:{t:40,l:10,r:10,b:10},
-    title: {text: dateStr ? `기준일: ${dateStr}` : '', font: {size: 14}},
-    font: {color: 'var(--text)'}
+    tiling:{ pad: 1 },
+    branchvalues:'total', 
+    maxdepth: 2,
+    hovertemplate:'<b>%{label}</b><br>값: %{value:,.0f}<br>Change: %{customdata[0]:.2f}%<br>Sector: %{customdata[2]}<extra></extra>',
+    customdata: custom,
+    pathbar:{visible:false}
   };
 
-  Plotly.newPlot('heatmap', data, layout, {
-    displayModeBar:false, 
+  const layout = {
+    paper_bgcolor: '#262931',
+    plot_bgcolor: '#262931',
+    margin:{l:0,r:0,t:0,b:0}, 
+    height,
+    font:{family:'Arial, Helvetica, sans-serif',size:11,color:'#FFFFFF'},
+    hoverlabel:{bgcolor:'#161b22',bordercolor:'#30363d',font:{color:'#fff'}}
+  };
+
+  Plotly.newPlot('heatmap', [trace], layout, {
     responsive:true,
-    staticPlot: false
+    displayModeBar:false
   }).then(() => {
-    // Plotly 이벤트 핸들러 올바르게 설정
+    // Plotly 이벤트 핸들러
     heatmapDiv.on('plotly_click', (ev) => {
       if(!ev || !ev.points || !ev.points.length) return;
       const p = ev.points[0];
       if(!p) return;
-      const label = p.label;
       const idx = p.pointNumber !== undefined ? p.pointNumber : p.pointIndex;
       const code = codes[idx];
       if(code){ 
