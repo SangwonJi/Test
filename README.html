@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"/>
+<title>지리 히트맵 대시보드 도움말</title>
+<link rel="stylesheet" href="assets/style.css"/>
+<body class="light">
+  <main class="layout" style="grid-template-columns: 1fr;">
+    <section class="panel right">
+      <div class="card">
+        <h1>도움말 · 지리 히트맵 대시보드</h1>
+        <p>이 앱은 모든 처리를 <b>브라우저</b>에서만 수행합니다. CSV는 외부로 전송되지 않습니다.</p>
+        <h2>준비물</h2>
+        <ul>
+          <li><b>지표 CSV (필수)</b> — 날짜, 국가 코드/이름, (선택) 대륙, 값, 변화율(%)</li>
+          <li><b>뉴스 CSV (선택)</b> — continent, title, url, summary</li>
+          <li><b>매핑 CSV (선택)</b> — country_code, continent, country_name</li>
+        </ul>
+        <h2>CSV 예시</h2>
+        <pre>Date,code,name,continent,value,change_pct
+2025-06-01,US,United States,North America,12345,2.1
+2025-06-01,DE,Germany,Europe,9981,-1.7
+2025-06-01,KR,South Korea,Asia,3310,3.2</pre>
+        <h2>팁</h2>
+        <ul>
+          <li>대륙 정보가 없으면, 매핑 CSV를 올리거나 내부 매핑 표로 자동 추정합니다.</li>
+          <li>변화율 컬럼이 없으면, 동일 국가의 최근 2일 값으로 DoD(%)를 계산합니다.</li>
+          <li>히트맵 타일을 클릭하면 해당 국가 상세 탭으로 이동합니다.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

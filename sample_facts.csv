@@ -1,0 +1,4 @@
+country_code,section,title,detail,url
+US,weather,폭염 주의보,서부 지역에 고온 경보가 발령되었습니다,https://weather.example/us-heat
+DE,holiday,공휴일,10월 3일 독일 통일의 날,https://gov.example/de-holiday
+KR,net,네트워크 상태,일부 지역 회선 점검 예정,https://isp.example/kr-status

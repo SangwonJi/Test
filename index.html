@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>지리 히트맵 대시보드 (로컬 전용)</title>
+  <meta name="description" content="CSV를 브라우저에서만 읽어 글로벌 히트맵, 상승/하락 국가, 대륙별 뉴스까지 한 페이지에서 확인합니다." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:; font-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <link rel="icon" href="data:,"/>
+  <link rel="stylesheet" href="assets/style.css" />
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">🗺️</div>
+      <div>
+        <h1>지리 히트맵 대시보드</h1>
+        <p class="sub">히트맵 · 상승/하락 국가 · 대륙별 뉴스 (CSV 로컬 전용)</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="themeToggle" class="btn ghost" title="테마 전환">🌓</button>
+      <a href="README.html" target="_blank" class="btn outline">도움말</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel left">
+      <section class="card">
+        <h2>1) 데이터 불러오기</h2>
+        <div class="file-group">
+          <label class="file-label">지표 CSV (필수)
+            <input type="file" id="fileMetrics" accept=".csv,text/csv" />
+          </label>
+          <div class="help small">예: 날짜·국가·대륙·지표값·전일대비(%)</div>
+        </div>
+
+        <div class="file-group">
+          <label class="file-label">뉴스 CSV (선택)
+            <input type="file" id="fileNews" accept=".csv,text/csv" />
+          </label>
+          <div class="help small">컬럼 예: continent,title,url,summary</div>
+        </div>
+        <div class="file-group">
+          <label class="file-label">상세정보 CSV (선택)
+            <input type="file" id="fileFacts" accept=".csv,text/csv" />
+          </label>
+          <div class="help small">컬럼 예: country_code,section(title: weather/holiday/net),title,detail,url</div>
+        </div>
+
+        <div class="file-group">
+          <label class="file-label">매핑 CSV (선택)
+            <input type="file" id="fileMap" accept=".csv,text/csv" />
+          </label>
+          <div class="help small">컬럼 예: country_code,continent,country_name</div>
+        </div>
+
+        <div class="row gap">
+          <button id="loadSample" class="btn">샘플 불러오기</button>
+          <button id="reset" class="btn ghost">초기화</button>
+        </div>
+        <div id="meta" class="meta small muted"></div>
+      </section>
+
+      <section class="card">
+        <h2>2) 컬럼 매핑</h2>
+        <div class="grid two">
+          <label>날짜 컬럼
+            <select id="colDate"></select>
+          </label>
+          <label>국가 코드(ISO2/3)
+            <select id="colCode"></select>
+          </label>
+          <label>국가 이름
+            <select id="colName"></select>
+          </label>
+          <label>대륙 (없으면 자동 추정)
+            <select id="colContinent"></select>
+          </label>
+          <label>값(크기/가치)
+            <select id="colValue"></select>
+          </label>
+          <label>변화율(%, DoD) 또는 변화값
+            <select id="colChange"></select>
+          </label>
+        </div>
+        <details>
+          <summary>자동 감지 결과</summary>
+          <div id="typeInfo" class="small"></div>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2>3) 보기 옵션</h2>
+        <div class="grid two">
+          <label>최신 기준일
+            <input type="date" id="latestDate" />
+          </label>
+          <label>상승 임계값 (%)
+            <input type="number" id="thrUp" step="0.1" value="5" />
+          </label>
+          <label>하락 임계값 (%)
+            <input type="number" id="thrDown" step="0.1" value="-5" />
+          </label>
+          <label>상위 N 표시
+            <input type="number" id="topN" min="1" max="100" value="30" />
+          </label>
+        </div>
+        <div class="chips" id="continentChips"></div>
+      </section>
+    </aside>
+
+    <section class="panel right">
+      <nav class="tabs">
+        <button class="tab active" data-tab="tab-heatmap">히트맵</button>
+        <button class="tab" data-tab="tab-movers">상승/하락</button>
+        <button class="tab" data-tab="tab-country">국가 상세</button>
+        <button class="tab" data-tab="tab-news">대륙별 뉴스</button>
+      </nav>
+
+      <section id="tab-heatmap" class="tab-panel active card">
+        <h2>글로벌 트리맵</h2>
+        <div id="heatmap" class="chart-box"></div>
+        <div class="row between small muted">
+          <div>타일: 대륙→국가 / 크기: 값 / 색상: 변화율</div>
+          <div>타일 클릭 시 <strong>국가 상세</strong>로 이동</div>
+        </div>
+      </section>
+
+      <section id="tab-movers" class="tab-panel card">
+        <h2>상승/하락 국가</h2>
+        <div class="grid two">
+          <div>
+            <h3>📈 상승</h3>
+            <ol id="listUp" class="list-compact"></ol>
+          </div>
+          <div>
+            <h3>📉 하락</h3>
+            <ol id="listDown" class="list-compact"></ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-country" class="tab-panel card">
+        <h2 id="countryTitle">국가 상세</h2>
+        <canvas id="countryChart" height="140"></canvas>
+        <div id="countryFacts" class="facts-grid" style="margin-top:.6rem;"></div>
+        <div class="table-wrap">
+          <table id="countryTable" class="data-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-news" class="tab-panel card">
+        <h2>🌍 대륙별 주요 뉴스</h2>
+        <div id="newsWrap" class="news-wrap"></div>
+        <div class="small muted">뉴스 CSV를 올리면 제목/링크/요약이 표시됩니다. (API 사용 없음)</div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="app-footer small muted">
+    <div>⚠️ 모든 처리는 브라우저에서만 수행됩니다. CSV는 외부로 전송되지 않습니다.</div>
+    <div>© Geo Dashboard · MIT License</div>
+  </footer>
+
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

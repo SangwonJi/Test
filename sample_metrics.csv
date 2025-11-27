@@ -1,0 +1,16 @@
+Date,code,name,continent,value,change_pct
+2025-10-01,US,United States,North America,12000,2.4
+2025-10-01,DE,Germany,Europe,9800,-1.2
+2025-10-01,KR,South Korea,Asia,3400,4.2
+2025-10-01,JP,Japan,Asia,7000,0.8
+2025-10-01,BR,Brazil,South America,4100,-2.8
+2025-10-02,US,United States,North America,12200,1.7
+2025-10-02,DE,Germany,Europe,9750,-0.5
+2025-10-02,KR,South Korea,Asia,3550,4.4
+2025-10-02,JP,Japan,Asia,7050,0.7
+2025-10-02,BR,Brazil,South America,4030,-1.7
+2025-10-03,US,United States,North America,11800,-3.3
+2025-10-03,DE,Germany,Europe,9900,1.5
+2025-10-03,KR,South Korea,Asia,3600,1.4
+2025-10-03,JP,Japan,Asia,6900,-2.1
+2025-10-03,BR,Brazil,South America,4200,4.2
