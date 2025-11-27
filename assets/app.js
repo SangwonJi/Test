@@ -268,28 +268,53 @@ function renderHeatmap(){
   const contFilter = state.selectedContinents.size ? (c=>state.selectedContinents.has(c)) : (_=>true);
   const filtered = rows.filter(r => contFilter(r.continent));
 
+  const heatmapDiv = document.getElementById('heatmap');
+  
+  // 데이터가 없을 때 처리
+  if(!filtered.length || !rows.length){
+    heatmapDiv.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--muted)">데이터가 없습니다. CSV 파일을 업로드하거나 샘플을 불러오세요.</div>';
+    return;
+  }
+
   // Build treemap vectors
   const labels=[], parents=[], values=[], texts=[], colors=[], codes=[];
-  // Add continent nodes
+  
+  // 대륙별 값 합계 계산
+  const contValues = new Map();
+  for(const r of filtered){
+    const cont = r.continent;
+    const val = Math.max(0.0001, isNaN(r.value)?0.0001:r.value);
+    contValues.set(cont, (contValues.get(cont)||0) + val);
+  }
+  
+  // Add continent nodes (부모 노드)
   const conts = Array.from(new Set(filtered.map(r=>r.continent)));
   for(const c of conts){
-    labels.push(c); parents.push(''); values.push(0.001); texts.push(c); colors.push('#445'); codes.push('');
+    labels.push(c); 
+    parents.push(''); 
+    values.push(contValues.get(c) || 0.001); 
+    texts.push(c); 
+    colors.push('rgba(100,100,120,0.3)'); 
+    codes.push('');
   }
+  
   function colorForChange(ch){
-    if(ch==null || isNaN(ch)) return 'rgba(128,128,128,0.35)';
+    if(ch==null || isNaN(ch)) return 'rgba(128,128,128,0.5)';
     // diverging red->grey->green
     const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
     const t = clamp((ch+10)/20, 0, 1); // -10% .. +10%
     const r = Math.round(255*(1-t));
     const g = Math.round(255*(t));
     const b = 80;
-    return `rgba(${r},${g},${b},0.9)`;
+    return `rgba(${r},${g},${b},0.85)`;
   }
 
+  // 국가 노드 추가
   for(const r of filtered){
     labels.push(r.name);
     parents.push(r.continent);
-    values.push(Math.max(0.0001, isNaN(r.value)?0.0001:r.value));
+    const val = Math.max(0.0001, isNaN(r.value)?0.0001:r.value);
+    values.push(val);
     const ch = r.change;
     texts.push(`${r.name}<br>값: ${fmt(r.value)}<br>변화: ${ch!=null && !isNaN(ch)? ch.toFixed(2)+'%':'N/A'}`);
     colors.push(colorForChange(ch));
@@ -298,26 +323,49 @@ function renderHeatmap(){
 
   const data = [{
     type:'treemap',
-    labels, parents, values, text:texts, textinfo:'label+text', hoverinfo:'text',
-    marker:{ colors },
-    branchvalues:'total'
+    labels, 
+    parents, 
+    values, 
+    text:texts, 
+    textinfo:'label+text', 
+    hoverinfo:'text',
+    marker:{ 
+      colors,
+      line: { width: 1, color: 'rgba(0,0,0,0.1)' }
+    },
+    branchvalues:'total',
+    tiling: {
+      packing: 'squarify',
+      squarifyratio: 1
+    }
   }];
 
   const layout = {
     paper_bgcolor:'rgba(0,0,0,0)',
     plot_bgcolor:'rgba(0,0,0,0)',
-    margin:{t:20,l:10,r:10,b:10},
-    title: {text: dateStr ? `기준일: ${dateStr}` : ''},
+    margin:{t:40,l:10,r:10,b:10},
+    title: {text: dateStr ? `기준일: ${dateStr}` : '', font: {size: 14}},
+    font: {color: 'var(--text)'}
   };
 
-  Plotly.newPlot('heatmap', data, layout, {displayModeBar:false, responsive:true});
-
-  const heatmapDiv = document.getElementById('heatmap');
-  heatmapDiv.on('plotly_click', (ev)=>{
-    const p = ev.points?.[0]; if(!p) return;
-    const label = p.label; const idx = p.pointIndex;
-    const code = codes[idx];
-    if(code){ selectCountry(code); switchTab('tab-country'); }
+  Plotly.newPlot('heatmap', data, layout, {
+    displayModeBar:false, 
+    responsive:true,
+    staticPlot: false
+  }).then(() => {
+    // Plotly 이벤트 핸들러 올바르게 설정
+    heatmapDiv.on('plotly_click', (ev) => {
+      if(!ev || !ev.points || !ev.points.length) return;
+      const p = ev.points[0];
+      if(!p) return;
+      const label = p.label;
+      const idx = p.pointNumber !== undefined ? p.pointNumber : p.pointIndex;
+      const code = codes[idx];
+      if(code){ 
+        selectCountry(code); 
+        switchTab('tab-country'); 
+      }
+    });
   });
 }
 
