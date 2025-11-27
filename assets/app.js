@@ -717,4 +717,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(e.key.toLowerCase()==='c' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); switchTab('tab-country'); }
     if(e.key.toLowerCase()==='n' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); switchTab('tab-news'); }
   });
+  
+  // 페이지 로드 시 자동으로 샘플 데이터 불러오기 (PUBGM_TRAFFIC 스타일)
+  window.addEventListener('load', ()=>{
+    loadSample();
+  });
 });
