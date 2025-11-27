@@ -416,7 +416,7 @@ const getContinent = (c) => {
 function calculateStats(data){
   const total=[], change=[], lastDayTraffic=[];
   const {Country, allDates, trafficByDate} = data;
-  const comparisonType = 'DoD'; // 기본값
+  const comparisonType = $('#comparisonType')?.value || 'DoD';
   
   const lastDate = allDates.length > 0 ? new Date(allDates[allDates.length - 1]) : null;
   
@@ -424,15 +424,85 @@ function calculateStats(data){
     const lastDayValue = (lastDate && trafficByDate[allDates[allDates.length - 1]] && trafficByDate[allDates[allDates.length - 1]][i]) || 0;
     lastDayTraffic.push(lastDayValue);
     
+    let compareDate = null;
     let compareValue = null;
     
     if(lastDate && !isNaN(lastDate)){
-      // DoD: 첫 날과 마지막 날
-      if(allDates.length > 0){
-        const firstDate = new Date(allDates[0]);
-        if(!isNaN(firstDate) && trafficByDate[allDates[0]] && trafficByDate[allDates[0]][i] !== undefined){
-          compareValue = trafficByDate[allDates[0]][i];
-        }
+      const compareDateObj = new Date(lastDate);
+      
+      switch(comparisonType){
+        case 'DoD':
+          // Day over Day: 첫 날과 마지막 날
+          if(allDates.length > 0){
+            const firstDate = new Date(allDates[0]);
+            if(!isNaN(firstDate) && trafficByDate[allDates[0]] && trafficByDate[allDates[0]][i] !== undefined){
+              compareValue = trafficByDate[allDates[0]][i];
+            }
+          }
+          break;
+          
+        case 'WoW':
+          // Week over Week: 7일 전
+          compareDateObj.setDate(compareDateObj.getDate() - 7);
+          compareDate = `${compareDateObj.getFullYear()}-${String(compareDateObj.getMonth()+1).padStart(2,'0')}-${String(compareDateObj.getDate()).padStart(2,'0')}`;
+          const wowDates = allDates.filter(d => {
+            const dObj = new Date(d);
+            const diff = Math.abs((dObj - compareDateObj) / (1000 * 60 * 60 * 24));
+            return diff <= 1;
+          });
+          if(wowDates.length > 0){
+            const closestDate = wowDates.sort((a,b) => {
+              const aDiff = Math.abs((new Date(a) - compareDateObj) / (1000 * 60 * 60 * 24));
+              const bDiff = Math.abs((new Date(b) - compareDateObj) / (1000 * 60 * 60 * 24));
+              return aDiff - bDiff;
+            })[0];
+            if(trafficByDate[closestDate] && trafficByDate[closestDate][i] !== undefined){
+              compareValue = trafficByDate[closestDate][i];
+            }
+          }
+          break;
+          
+        case 'MoM':
+          // Month over Month: 한 달 전
+          compareDateObj.setMonth(compareDateObj.getMonth() - 1);
+          compareDate = `${compareDateObj.getFullYear()}-${String(compareDateObj.getMonth()+1).padStart(2,'0')}-${String(compareDateObj.getDate()).padStart(2,'0')}`;
+          const momDates = allDates.filter(d => {
+            const dObj = new Date(d);
+            const diff = Math.abs((dObj - compareDateObj) / (1000 * 60 * 60 * 24));
+            return diff <= 3;
+          });
+          if(momDates.length > 0){
+            const closestDate = momDates.sort((a,b) => {
+              const aDiff = Math.abs((new Date(a) - compareDateObj) / (1000 * 60 * 60 * 24));
+              const bDiff = Math.abs((new Date(b) - compareDateObj) / (1000 * 60 * 60 * 24));
+              return aDiff - bDiff;
+            })[0];
+            if(trafficByDate[closestDate] && trafficByDate[closestDate][i] !== undefined){
+              compareValue = trafficByDate[closestDate][i];
+            }
+          }
+          break;
+          
+        case 'YoY':
+          // Year over Year: 1년 전
+          compareDateObj.setFullYear(compareDateObj.getFullYear() - 1);
+          compareDate = `${compareDateObj.getFullYear()}-${String(compareDateObj.getMonth()+1).padStart(2,'0')}-${String(compareDateObj.getDate()).padStart(2,'0')}`;
+          const yoyDates = allDates.filter(d => {
+            const dObj = new Date(d);
+            const diff = Math.abs((dObj - compareDateObj) / (1000 * 60 * 60 * 24));
+            return diff <= 7;
+          });
+          if(yoyDates.length > 0){
+            const closestDate = yoyDates.sort((a,b) => {
+              const aDiff = Math.abs((new Date(a) - compareDateObj) / (1000 * 60 * 60 * 24));
+              const bDiff = Math.abs((new Date(b) - compareDateObj) / (1000 * 60 * 60 * 24));
+              return aDiff - bDiff;
+            })[0];
+            if(trafficByDate[closestDate] && trafficByDate[closestDate][i] !== undefined){
+              compareValue = trafficByDate[closestDate][i];
+            }
+          }
+          break;
       }
     }
     
@@ -445,8 +515,8 @@ function calculateStats(data){
     total.push(lastDayValue);
   }
   
-  const topN = 180;
-  const sortBy = 'revenue';
+  const topN = +($('#topN')?.value || 180);
+  const sortBy = $('#sortBy')?.value || 'revenue';
   let idx;
   if(sortBy==='revenue'){
     idx=Array.from({length:data.Country.length},(_,i)=>i).sort((a,b)=> total[b]-total[a]).slice(0,topN);
@@ -500,8 +570,8 @@ function renderHeatmap(){
   }
   
   const stats=calculateStats(data);
-  const topN=180;
-  const groupBy=true; // 항상 대륙별 그룹화
+  const topN=+($('#topN')?.value || 180);
+  const groupBy=$('#groupByContinent')?.checked !== false; // 기본값 true
 
   // Build treemap arrays (PUBGM_TRAFFIC exact copy)
   let ids=[], labels=[], parents=[], values=[], colors=[], text=[], custom=[], codes=[];
@@ -820,7 +890,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('#fileMetrics').addEventListener('change', async (e)=>{
     const f = e.target.files?.[0]; if(!f) return;
     const rows = await parseCSVFile(f);
-    ingestMetrics(rows); postLoad();
+    ingestMetrics(rows); 
+    inferTypesAndColumns();
+    populateMappingControls();
+    computeLatestDate();
+    updateMeta();
+    renderHeatmap();
   });
   $('#fileMap').addEventListener('change', async (e)=>{
     const f = e.target.files?.[0]; if(!f) return;
@@ -839,11 +914,19 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const mapSel = ['colDate','colCode','colName','colContinent','colValue','colChange'];
   mapSel.forEach(id => { $('#'+id).addEventListener('change', ()=>{ const v=$('#'+id).value||null; const key=id.replace('col','').toLowerCase(); state.cols[key]=v; computeLatestDate(); renderAll(); }); });
 
-  // Options
-  $('#latestDate').addEventListener('change', ()=>{ state.latestDate=$('#latestDate').value; renderAll(); });
-  $('#thrUp').addEventListener('change', ()=>{ state.thrUp=parseFloat($('#thrUp').value)||5; renderAll(); });
-  $('#thrDown').addEventListener('change', ()=>{ state.thrDown=parseFloat($('#thrDown').value)||-5; renderAll(); });
-  $('#topN').addEventListener('change', ()=>{ state.topN=parseInt($('#topN').value)||30; renderAll(); });
+  // Filter controls (PUBGM_TRAFFIC style)
+  ['topN','sortBy','groupByContinent','comparisonType'].forEach(id=>{
+    const el = $('#'+id);
+    if(el) el.addEventListener('change', ()=> renderHeatmap());
+  });
+
+  // Options (legacy)
+  const latestDateEl = $('#latestDate');
+  if(latestDateEl) latestDateEl.addEventListener('change', ()=>{ state.latestDate=$('#latestDate').value; renderAll(); });
+  const thrUpEl = $('#thrUp');
+  if(thrUpEl) thrUpEl.addEventListener('change', ()=>{ state.thrUp=parseFloat($('#thrUp').value)||5; renderAll(); });
+  const thrDownEl = $('#thrDown');
+  if(thrDownEl) thrDownEl.addEventListener('change', ()=>{ state.thrDown=parseFloat($('#thrDown').value)||-5; renderAll(); });
 
   // Tabs
   $$('.tab').forEach(b => b.addEventListener('click', ()=> switchTab(b.dataset.tab)));

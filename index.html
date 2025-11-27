@@ -29,110 +29,47 @@
     </div>
   </header>
 
-  <main class="layout">
-    <aside class="panel left">
-      <section class="card">
-        <h2>1) 데이터 불러오기</h2>
-        <div class="file-group">
-          <label class="file-label">지표 CSV (필수)
-            <input type="file" id="fileMetrics" accept=".csv,text/csv" />
-          </label>
-          <div class="help small">예: 날짜·국가·대륙·지표값·전일대비(%)</div>
-        </div>
+  <div class="toolbar">
+    <input type="file" id="fileMetrics" accept=".csv,text/csv" style="padding:8px 12px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px"/>
+    <button id="loadSample" class="btn">📁 샘플 불러오기</button>
+    <button id="reset" class="btn ghost">초기화</button>
+    <div class="status-badge" id="meta">데이터를 불러오세요</div>
+  </div>
 
-        <div class="file-group">
-          <label class="file-label">매핑 CSV (선택)
-            <input type="file" id="fileMap" accept=".csv,text/csv" />
-          </label>
-          <div class="help small">컬럼 예: country_code,continent,country_name</div>
-        </div>
+  <div class="filter-controls">
+    <label><strong>Show Top:</strong> <input type="number" id="topN" value="180" min="10" max="250" style="padding:6px 10px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px;margin-left:8px;width:80px"/></label>
+    <label><strong>Sort By:</strong>
+      <select id="sortBy" style="padding:6px 10px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px;margin-left:8px">
+        <option value="revenue" selected>Total Traffic</option>
+        <option value="change_desc">+ 변화량 큰 순</option>
+        <option value="change_asc">- 변화량 큰 순</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="groupByContinent" checked/> <strong>Group by Sector (Continent)</strong></label>
+    <label style="margin-top:8px"><strong>Comparison:</strong>
+      <select id="comparisonType" style="padding:6px 10px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px;margin-left:8px;font-size:13px">
+        <option value="DoD" selected>DoD (Day over Day)</option>
+        <option value="WoW">WoW (Week over Week)</option>
+        <option value="MoM">MoM (Month over Month)</option>
+        <option value="YoY">YoY (Year over Year)</option>
+      </select>
+    </label>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:12px;border-top:1px solid var(--border)">
+      <label><strong>Date Range:</strong> 
+        <input type="date" id="startDate" style="padding:6px 10px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px;margin-left:8px"/>
+      </label>
+      <label><strong>~</strong> 
+        <input type="date" id="endDate" style="padding:6px 10px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:6px;margin-left:8px"/>
+      </label>
+      <button id="btnApplyDateRange" style="padding:6px 12px;background:linear-gradient(135deg,#238636,#2ea043);border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:12px">Apply</button>
+      <button id="btnClearDateRange" style="padding:6px 12px;background:var(--panel);border:1px solid var(--border);border-radius:6px;color:var(--text);font-weight:600;cursor:pointer;font-size:12px">Clear</button>
+    </div>
+  </div>
 
-        <div class="row gap">
-          <button id="loadSample" class="btn">샘플 불러오기</button>
-          <button id="reset" class="btn ghost">초기화</button>
-        </div>
-        <div id="meta" class="meta small muted"></div>
-      </section>
-
-      <section class="card">
-        <h2>2) 컬럼 매핑</h2>
-        <div class="grid two">
-          <label>날짜 컬럼
-            <select id="colDate"></select>
-          </label>
-          <label>국가 코드(ISO2/3)
-            <select id="colCode"></select>
-          </label>
-          <label>국가 이름
-            <select id="colName"></select>
-          </label>
-          <label>대륙 (없으면 자동 추정)
-            <select id="colContinent"></select>
-          </label>
-          <label>값(크기/가치)
-            <select id="colValue"></select>
-          </label>
-          <label>변화율(%, DoD) 또는 변화값
-            <select id="colChange"></select>
-          </label>
-        </div>
-        <details>
-          <summary>자동 감지 결과</summary>
-          <div id="typeInfo" class="small"></div>
-        </details>
-      </section>
-
-      <section class="card">
-        <h2>3) API 설정</h2>
-        <div class="grid two">
-          <label>뉴스 API 엔드포인트
-            <input type="text" id="apiNewsUrl" placeholder="https://api.example.com/news" />
-          </label>
-          <label>상세정보 API 엔드포인트
-            <input type="text" id="apiFactsUrl" placeholder="https://api.example.com/facts" />
-          </label>
-        </div>
-        <div class="row gap">
-          <button id="loadNews" class="btn">뉴스 불러오기</button>
-          <button id="loadFacts" class="btn">상세정보 불러오기</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>4) 보기 옵션</h2>
-        <div class="grid two">
-          <label>최신 기준일
-            <input type="date" id="latestDate" />
-          </label>
-          <label>상승 임계값 (%)
-            <input type="number" id="thrUp" step="0.1" value="5" />
-          </label>
-          <label>하락 임계값 (%)
-            <input type="number" id="thrDown" step="0.1" value="-5" />
-          </label>
-          <label>상위 N 표시
-            <input type="number" id="topN" min="1" max="100" value="30" />
-          </label>
-        </div>
-        <div class="chips" id="continentChips"></div>
-      </section>
-    </aside>
-
+  <main class="layout" style="grid-template-columns: 1fr;">
     <section class="panel right">
-      <nav class="tabs">
-        <button class="tab active" data-tab="tab-heatmap">히트맵</button>
-        <button class="tab" data-tab="tab-movers">상승/하락</button>
-        <button class="tab" data-tab="tab-country">국가 상세</button>
-        <button class="tab" data-tab="tab-news">대륙별 뉴스</button>
-      </nav>
-
-      <section id="tab-heatmap" class="tab-panel active card">
-        <h2>글로벌 트리맵</h2>
+      <section id="tab-heatmap" class="tab-panel active card" style="display:block">
         <div id="heatmap" class="chart-box"></div>
-        <div class="row between small muted">
-          <div>타일: 대륙→국가 / 크기: 값 / 색상: 변화율</div>
-          <div>타일 클릭 시 <strong>국가 상세</strong>로 이동</div>
-        </div>
       </section>
 
       <section id="tab-movers" class="tab-panel card">
