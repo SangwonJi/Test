@@ -32,13 +32,10 @@ function parseCSVFile(file){
 
 async function loadSample(){
   const m = await fetch('sample_metrics.csv').then(r=>r.text());
-  const n = await fetch('sample_news.csv').then(r=>r.text());
   const map = await fetch('sample_map.csv').then(r=>r.text());
   const [metrics] = await Promise.all([new Promise(res=>Papa.parse(m,{header:true,complete:r=>res(r.data)}))]);
-  const [news] = await Promise.all([new Promise(res=>Papa.parse(n,{header:true,complete:r=>res(r.data)}))]);
   const [cmapRows] = await Promise.all([new Promise(res=>Papa.parse(map,{header:true,complete:r=>res(r.data)}))]);
   ingestMetrics(metrics);
-  ingestNews(news);
   ingestMap(cmapRows);
   postLoad();
 }
@@ -65,13 +62,26 @@ function ingestMetrics(rows){
   state.metrics = cleaned;
 }
 
-function ingestNews(rows){
-  state.news = rows.filter(r => (r.continent || r.Continent || r.CONtinent));
+function ingestNews(data){
+  // API 응답 또는 배열 처리
+  if(Array.isArray(data)){
+    state.news = data.filter(r => (r.continent || r.Continent || r.CONtinent));
+  } else if(data && Array.isArray(data.items || data.news || data.data)){
+    state.news = (data.items || data.news || data.data).filter(r => (r.continent || r.Continent || r.CONtinent));
+  } else {
+    state.news = [];
+  }
 }
 
-
-function ingestFacts(rows){
-  state.facts = rows.filter(r => (r.country_code || r.code || r.Code || r.country || '').toString().trim() !== '');
+function ingestFacts(data){
+  // API 응답 또는 배열 처리
+  if(Array.isArray(data)){
+    state.facts = data.filter(r => (r.country_code || r.code || r.Code || r.country || '').toString().trim() !== '');
+  } else if(data && Array.isArray(data.items || data.facts || data.data)){
+    state.facts = (data.items || data.facts || data.data).filter(r => (r.country_code || r.code || r.Code || r.country || '').toString().trim() !== '');
+  } else {
+    state.facts = [];
+  }
 }
 
 function ingestMap(rows){
@@ -117,7 +127,11 @@ function postLoad(){
   buildContinentsChips();
   computeLatestDate();
   renderAll();
-  $('#meta').textContent = `지표 행: ${state.metrics.length} · 뉴스 행: ${state.news.length} · 매핑 국가: ${Object.keys(state.cmap).length}`;
+  updateMeta();
+}
+
+function updateMeta(){
+  $('#meta').textContent = `지표 행: ${state.metrics.length} · 뉴스: ${state.news.length}개 · 상세정보: ${state.facts.length}개 · 매핑 국가: ${Object.keys(state.cmap).length}`;
 }
 
 function computeLatestDate(){
@@ -398,6 +412,8 @@ function buildList(sel, arr){
 
 function selectCountry(code){
   state.selectedCountryCode = code;
+  // 국가 선택 시 상세정보 자동 로딩
+  fetchFacts(code);
   renderCountryDetail();
 }
 
@@ -463,10 +479,71 @@ function renderCountryDetail(){
   }
 }
 
+// --- API calls
+async function fetchNews(){
+  const url = $('#apiNewsUrl').value?.trim();
+  if(!url){
+    alert('뉴스 API 엔드포인트를 입력하세요.');
+    return;
+  }
+  try {
+    $('#loadNews').disabled = true;
+    $('#loadNews').textContent = '로딩 중...';
+    const response = await fetch(url);
+    if(!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const data = await response.json();
+    ingestNews(data);
+    renderNews();
+    updateMeta();
+    $('#loadNews').textContent = '뉴스 불러오기';
+  } catch(err){
+    alert(`뉴스 로딩 실패: ${err.message}`);
+    console.error('News API error:', err);
+  } finally {
+    $('#loadNews').disabled = false;
+    $('#loadNews').textContent = '뉴스 불러오기';
+  }
+}
+
+async function fetchFacts(countryCode = null){
+  const url = $('#apiFactsUrl').value?.trim();
+  if(!url){
+    if(countryCode) return; // 국가 선택 시 자동 로딩이면 조용히 실패
+    alert('상세정보 API 엔드포인트를 입력하세요.');
+    return;
+  }
+  try {
+    let fetchUrl = url;
+    if(countryCode){
+      // 국가 코드를 쿼리 파라미터로 추가
+      fetchUrl = url + (url.includes('?') ? '&' : '?') + `country_code=${countryCode}`;
+    }
+    const response = await fetch(fetchUrl);
+    if(!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const data = await response.json();
+    if(countryCode){
+      // 특정 국가의 상세정보만 업데이트
+      const newFacts = Array.isArray(data) ? data : (data.items || data.facts || data.data || []);
+      state.facts = state.facts.filter(f => {
+        const code = String(f.country_code||f.code||'').toUpperCase();
+        return code !== countryCode.toUpperCase();
+      });
+      state.facts.push(...newFacts);
+    } else {
+      ingestFacts(data);
+    }
+    if(countryCode) renderCountryDetail();
+    updateMeta();
+  } catch(err){
+    if(!countryCode) alert(`상세정보 로딩 실패: ${err.message}`);
+    console.error('Facts API error:', err);
+  }
+}
+
 function renderNews(){
   // Group by continent
   const wrap = $('#newsWrap'); wrap.innerHTML='';
-  if(!state.news.length){ wrap.innerHTML='<div class="muted">뉴스 CSV가 업로드되지 않았습니다.</div>'; return; }
+  if(!state.news.length){ wrap.innerHTML='<div class="muted">뉴스가 없습니다. API 엔드포인트를 설정하고 "뉴스 불러오기" 버튼을 클릭하세요.</div>'; return; }
   const byC = new Map();
   for(const r of state.news){
     const c = (r.continent||r.Continent||'Unknown')||'Unknown';
@@ -515,15 +592,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
     const rows = await parseCSVFile(f);
     ingestMetrics(rows); postLoad();
   });
-  $('#fileNews').addEventListener('change', async (e)=>{
-    const f = e.target.files?.[0]; if(!f) return;
-    const rows = await parseCSVFile(f);
-    ingestNews(rows); renderNews();
-  });
-  $('#fileFacts').addEventListener('change', async (e)=>{
-    const f = e.target.files?.[0]; if(!f) return;
-    const rows = await parseCSVFile(f); ingestFacts(rows); renderCountryDetail();
-  });
   $('#fileMap').addEventListener('change', async (e)=>{
     const f = e.target.files?.[0]; if(!f) return;
     const rows = await parseCSVFile(f);
@@ -532,6 +600,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   $('#loadSample').addEventListener('click', loadSample);
   $('#reset').addEventListener('click', resetAll);
+  
+  // API 호출 버튼
+  $('#loadNews').addEventListener('click', fetchNews);
+  $('#loadFacts').addEventListener('click', ()=>fetchFacts());
 
   // Mapping selectors
   const mapSel = ['colDate','colCode','colName','colContinent','colValue','colChange'];

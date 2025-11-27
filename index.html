@@ -20,7 +20,7 @@
       <div class="logo">🗺️</div>
       <div>
         <h1>지리 히트맵 대시보드</h1>
-        <p class="sub">히트맵 · 상승/하락 국가 · 대륙별 뉴스 (CSV 로컬 전용)</p>
+        <p class="sub">히트맵 · 상승/하락 국가 · 대륙별 뉴스</p>
       </div>
     </div>
     <div class="header-actions">
@@ -38,19 +38,6 @@
             <input type="file" id="fileMetrics" accept=".csv,text/csv" />
           </label>
           <div class="help small">예: 날짜·국가·대륙·지표값·전일대비(%)</div>
-        </div>
-
-        <div class="file-group">
-          <label class="file-label">뉴스 CSV (선택)
-            <input type="file" id="fileNews" accept=".csv,text/csv" />
-          </label>
-          <div class="help small">컬럼 예: continent,title,url,summary</div>
-        </div>
-        <div class="file-group">
-          <label class="file-label">상세정보 CSV (선택)
-            <input type="file" id="fileFacts" accept=".csv,text/csv" />
-          </label>
-          <div class="help small">컬럼 예: country_code,section(title: weather/holiday/net),title,detail,url</div>
         </div>
 
         <div class="file-group">
@@ -96,7 +83,23 @@
       </section>
 
       <section class="card">
-        <h2>3) 보기 옵션</h2>
+        <h2>3) API 설정</h2>
+        <div class="grid two">
+          <label>뉴스 API 엔드포인트
+            <input type="text" id="apiNewsUrl" placeholder="https://api.example.com/news" />
+          </label>
+          <label>상세정보 API 엔드포인트
+            <input type="text" id="apiFactsUrl" placeholder="https://api.example.com/facts" />
+          </label>
+        </div>
+        <div class="row gap">
+          <button id="loadNews" class="btn">뉴스 불러오기</button>
+          <button id="loadFacts" class="btn">상세정보 불러오기</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>4) 보기 옵션</h2>
         <div class="grid two">
           <label>최신 기준일
             <input type="date" id="latestDate" />
@@ -161,13 +164,13 @@
       <section id="tab-news" class="tab-panel card">
         <h2>🌍 대륙별 주요 뉴스</h2>
         <div id="newsWrap" class="news-wrap"></div>
-        <div class="small muted">뉴스 CSV를 올리면 제목/링크/요약이 표시됩니다. (API 사용 없음)</div>
+        <div class="small muted">뉴스는 API를 통해 불러옵니다. API 엔드포인트를 설정하고 "뉴스 불러오기" 버튼을 클릭하세요.</div>
       </section>
     </section>
   </main>
 
   <footer class="app-footer small muted">
-    <div>⚠️ 모든 처리는 브라우저에서만 수행됩니다. CSV는 외부로 전송되지 않습니다.</div>
+    <div>⚠️ 지표 CSV는 브라우저에서만 처리됩니다. 뉴스와 상세정보는 API를 통해 가져옵니다.</div>
     <div>© Geo Dashboard · MIT License</div>
   </footer>
 
