@@ -341,132 +341,270 @@ function colorFromChange(change, intensity = 1) {
   }
 }
 
-function renderHeatmap(){
-  const {rows,dateStr} = normalizeLatestSnapshot();
-  const thrUp = parseFloat($('#thrUp').value)||state.thrUp;
-  const thrDown = parseFloat($('#thrDown').value)||state.thrDown;
-  const contFilter = state.selectedContinents.size ? (c=>state.selectedContinents.has(c)) : (_=>true);
-  const filtered = rows.filter(r => contFilter(r.continent));
+// --- Convert current data format to PUBGM_TRAFFIC format
+function convertToPubgmFormat(){
+  // 모든 날짜 수집
+  const dateCol = state.cols.date;
+  const codeCol = state.cols.code;
+  const valCol = state.cols.value;
+  if(!dateCol || !codeCol || !valCol) return null;
+  
+  const allDatesSet = new Set();
+  const countryDataMap = {}; // {country: {dates: {date: value}}}
+  
+  for(const r of state.metrics){
+    const dateStr = r[dateCol] ? new Date(toTime(r[dateCol])).toISOString().slice(0,10) : null;
+    if(!dateStr) continue;
+    const country = state.cols.name ? String(r[state.cols.name]||'') : (state.cmap[String(r[codeCol]||'').toUpperCase()]?.name || String(r[codeCol]||''));
+    if(!country) continue;
+    const value = valueOf(r);
+    if(isNaN(value)) continue;
+    
+    allDatesSet.add(dateStr);
+    if(!countryDataMap[country]) countryDataMap[country] = {};
+    countryDataMap[country][dateStr] = value;
+  }
+  
+  const allDates = Array.from(allDatesSet).sort();
+  if(allDates.length === 0) return null;
+  
+  const countries = Object.keys(countryDataMap);
+  const trafficByDate = {};
+  allDates.forEach(date => {
+    trafficByDate[date] = countries.map(country => countryDataMap[country][date] || 0);
+  });
+  
+  return {
+    Country: countries,
+    allDates: allDates,
+    trafficByDate: trafficByDate,
+    lastDate: allDates[allDates.length - 1]
+  };
+}
 
+// --- PUBGM_TRAFFIC country to continent mapping
+const countryToContinent = {
+  'USA':'NORTH AMERICA','United States':'NORTH AMERICA','Canada':'NORTH AMERICA','Mexico':'NORTH AMERICA','Guatemala':'NORTH AMERICA','Honduras':'NORTH AMERICA','El Salvador':'NORTH AMERICA','Nicaragua':'NORTH AMERICA','Costa Rica':'NORTH AMERICA','Panama':'NORTH AMERICA','Cuba':'NORTH AMERICA','Jamaica':'NORTH AMERICA','Haiti':'NORTH AMERICA','Dominican Republic':'NORTH AMERICA','Trinidad':'NORTH AMERICA','Barbados':'NORTH AMERICA','Bahamas':'NORTH AMERICA','Belize':'NORTH AMERICA',
+  'Brazil':'SOUTH AMERICA','Argentina':'SOUTH AMERICA','Chile':'SOUTH AMERICA','Colombia':'SOUTH AMERICA','Peru':'SOUTH AMERICA','Ecuador':'SOUTH AMERICA','Venezuela':'SOUTH AMERICA','Uruguay':'SOUTH AMERICA','Paraguay':'SOUTH AMERICA','Bolivia':'SOUTH AMERICA','Suriname':'SOUTH AMERICA','Guyana':'SOUTH AMERICA','French Guiana':'SOUTH AMERICA',
+  'Germany':'EUROPE','UK':'EUROPE','United Kingdom':'EUROPE','France':'EUROPE','Italy':'EUROPE','Spain':'EUROPE','Netherlands':'EUROPE','Poland':'EUROPE','Belgium':'EUROPE','Sweden':'EUROPE','Switzerland':'EUROPE','Greece':'EUROPE','Portugal':'EUROPE','Czech Republic':'EUROPE','Romania':'EUROPE','Hungary':'EUROPE','Bulgaria':'EUROPE','Croatia':'EUROPE','Serbia':'EUROPE','Slovakia':'EUROPE','Slovenia':'EUROPE','Austria':'EUROPE','Denmark':'EUROPE','Norway':'EUROPE','Finland':'EUROPE','Ireland':'EUROPE','Cyprus':'EUROPE','Albania':'EUROPE','Bosnia':'EUROPE','Macedonia':'EUROPE','Montenegro':'EUROPE','Kosovo':'EUROPE','Iceland':'EUROPE','Luxembourg':'EUROPE','Malta':'EUROPE','Monaco':'EUROPE','Andorra':'EUROPE','Liechtenstein':'EUROPE','San Marino':'EUROPE','Vatican':'EUROPE','Jersey':'EUROPE','Guernsey':'EUROPE','Isle of Man':'EUROPE','Faroe Islands':'EUROPE','Greenland':'EUROPE','Svalbard':'EUROPE','Ukraine':'EUROPE','Lithuania':'EUROPE','Latvia':'EUROPE','Estonia':'EUROPE','Moldova':'EUROPE','Belarus':'EUROPE',
+  'China':'ASIA','India':'ASIA','Japan':'ASIA','Korea':'ASIA','South Korea':'ASIA','Indonesia':'ASIA','Thailand':'ASIA','Vietnam':'ASIA','Philippines':'ASIA','Malaysia':'ASIA','Singapore':'ASIA','Pakistan':'ASIA','Bangladesh':'ASIA','Myanmar':'ASIA','Cambodia':'ASIA','Laos':'ASIA','Nepal':'ASIA','Sri Lanka':'ASIA','Afghanistan':'ASIA','Iraq':'ASIA','Iran':'ASIA','Israel':'ASIA','Jordan':'ASIA','Lebanon':'ASIA','Kuwait':'ASIA','Qatar':'ASIA','Oman':'ASIA','Bahrain':'ASIA','Yemen':'ASIA','Syria':'ASIA','Saudi Arabia':'ASIA','UAE':'ASIA','Turkey':'ASIA','Kazakhstan':'ASIA','Uzbekistan':'ASIA','Kyrgyzstan':'ASIA','Tajikistan':'ASIA','Turkmenistan':'ASIA','Azerbaijan':'ASIA','Armenia':'ASIA','Georgia':'ASIA','Mongolia':'ASIA','North Korea':'ASIA','Taiwan':'ASIA','Hong Kong':'ASIA','Macau':'ASIA','Brunei':'ASIA','East Timor':'ASIA','Bhutan':'ASIA','Maldives':'ASIA',
+  'South Africa':'AFRICA','Egypt':'AFRICA','Nigeria':'AFRICA','Morocco':'AFRICA','Algeria':'AFRICA','Tunisia':'AFRICA','Libya':'AFRICA','Sudan':'AFRICA','Ethiopia':'AFRICA','Kenya':'AFRICA','Tanzania':'AFRICA','Uganda':'AFRICA','Ghana':'AFRICA','Ivory Coast':'AFRICA','Senegal':'AFRICA','Cameroon':'AFRICA','Angola':'AFRICA','Mozambique':'AFRICA','Madagascar':'AFRICA','Zimbabwe':'AFRICA','Zambia':'AFRICA','Malawi':'AFRICA','Rwanda':'AFRICA','Burundi':'AFRICA','Somalia':'AFRICA','Djibouti':'AFRICA','Eritrea':'AFRICA','Mauritania':'AFRICA','Mali':'AFRICA','Burkina Faso':'AFRICA','Niger':'AFRICA','Chad':'AFRICA','Central African Republic':'AFRICA','Congo':'AFRICA','DR Congo':'AFRICA','Gabon':'AFRICA','Equatorial Guinea':'AFRICA','Sao Tome':'AFRICA','Guinea':'AFRICA','Sierra Leone':'AFRICA','Liberia':'AFRICA','Togo':'AFRICA','Benin':'AFRICA','Mauritius':'AFRICA','Seychelles':'AFRICA','Comoros':'AFRICA','Cape Verde':'AFRICA','Guinea-Bissau':'AFRICA','Gambia':'AFRICA','Lesotho':'AFRICA','Swaziland':'AFRICA','Botswana':'AFRICA','Namibia':'AFRICA',
+  'Australia':'OCEANIA','New Zealand':'OCEANIA','Papua New Guinea':'OCEANIA','Fiji':'OCEANIA','Solomon Islands':'OCEANIA','Vanuatu':'OCEANIA','Samoa':'OCEANIA','Tonga':'OCEANIA','Palau':'OCEANIA','Micronesia':'OCEANIA','Marshall Islands':'OCEANIA','Norfolk Island':'OCEANIA','Christmas Island':'OCEANIA','Cocos Islands':'OCEANIA',
+  'Russia':'RUSSIA & CIS'
+};
+
+const getContinent = (c) => {
+  // 먼저 countryToContinent에서 찾기
+  if(countryToContinent[c]) return countryToContinent[c];
+  // 현재 프로젝트의 ensureContinentForRow 로직 사용
+  const codeCol = state.cols.code;
+  const nameCol = state.cols.name;
+  for(const r of state.metrics){
+    const name = nameCol ? String(r[nameCol]||'') : '';
+    if(name === c){
+      return ensureContinentForRow(r);
+    }
+    const code = codeCol ? String(r[codeCol]||'').toUpperCase() : '';
+    if(code && state.cmap[code]?.name === c){
+      return state.cmap[code].continent || 'OTHER';
+    }
+  }
+  return 'OTHER';
+};
+
+// --- PUBGM_TRAFFIC calculateStats (exact copy)
+function calculateStats(data){
+  const total=[], change=[], lastDayTraffic=[];
+  const {Country, allDates, trafficByDate} = data;
+  const comparisonType = 'DoD'; // 기본값
+  
+  const lastDate = allDates.length > 0 ? new Date(allDates[allDates.length - 1]) : null;
+  
+  for(let i=0;i<Country.length;i++){
+    const lastDayValue = (lastDate && trafficByDate[allDates[allDates.length - 1]] && trafficByDate[allDates[allDates.length - 1]][i]) || 0;
+    lastDayTraffic.push(lastDayValue);
+    
+    let compareValue = null;
+    
+    if(lastDate && !isNaN(lastDate)){
+      // DoD: 첫 날과 마지막 날
+      if(allDates.length > 0){
+        const firstDate = new Date(allDates[0]);
+        if(!isNaN(firstDate) && trafficByDate[allDates[0]] && trafficByDate[allDates[0]][i] !== undefined){
+          compareValue = trafficByDate[allDates[0]][i];
+        }
+      }
+    }
+    
+    if(compareValue !== null && compareValue > 0 && lastDayValue > 0){
+      change.push(((lastDayValue - compareValue) / compareValue) * 100);
+    } else {
+      change.push(0);
+    }
+    
+    total.push(lastDayValue);
+  }
+  
+  const topN = 180;
+  const sortBy = 'revenue';
+  let idx;
+  if(sortBy==='revenue'){
+    idx=Array.from({length:data.Country.length},(_,i)=>i).sort((a,b)=> total[b]-total[a]).slice(0,topN);
+  } else if(sortBy==='change_desc'){
+    idx=Array.from({length:data.Country.length},(_,i)=>i)
+      .sort((a,b)=> Math.abs(change[b])-Math.abs(change[a]))
+      .slice(0,topN);
+  } else if(sortBy==='change_asc'){
+    idx=Array.from({length:data.Country.length},(_,i)=>i)
+      .filter(i=> change[i] < 0)
+      .sort((a,b)=> Math.abs(change[a])-Math.abs(change[b]))
+      .slice(0,topN);
+  }
+
+  const topCountries=idx.map(i=>data.Country[i]);
+  const topRevenue=idx.map(i=>total[i]);
+  const topChange=idx.map(i=>change[i]);
+  const totalSum=topRevenue.reduce((a,b)=>a+b,0);
+  const avgChange=topChange.reduce((a,b)=>a+b,0)/topChange.length;
+  
+  const maxChangeIdx = topChange.indexOf(Math.max(...topChange));
+  const minChangeIdx = topChange.indexOf(Math.min(...topChange));
+  const maxChangeCountry = topCountries[maxChangeIdx] || '';
+  const minChangeCountry = topCountries[minChangeIdx] || '';
+  
+  const allCountries = data.Country;
+  const allLastDayTraffic = total;
+  const trafficTop10 = Array.from({length:allCountries.length},(_,i)=>i)
+    .sort((a,b)=> allLastDayTraffic[b]-allLastDayTraffic[a])
+    .slice(0,10)
+    .map(i=>({
+      country: allCountries[i],
+      traffic: allLastDayTraffic[i],
+      change: change[i]
+    }));
+  
+  return {topCountries, topRevenue, topChange, totalSum, avgChange,
+          maxChange:Math.max(...topChange), minChange:Math.min(...topChange),
+          maxChangeCountry, minChangeCountry, trafficTop10};
+}
+
+// --- PUBGM_TRAFFIC createTreemap (exact copy)
+function renderHeatmap(){
   const heatmapDiv = document.getElementById('heatmap');
   
-  // 데이터가 없을 때 처리
-  if(!filtered.length || !rows.length){
+  // 데이터 변환
+  const data = convertToPubgmFormat();
+  if(!data || !data.Country.length){
     heatmapDiv.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--muted)">데이터가 없습니다. CSV 파일을 업로드하거나 샘플을 불러오세요.</div>';
     return;
   }
+  
+  const stats=calculateStats(data);
+  const topN=180;
+  const groupBy=true; // 항상 대륙별 그룹화
 
-  // Build treemap arrays (PUBGM_TRAFFIC style)
+  // Build treemap arrays (PUBGM_TRAFFIC exact copy)
   let ids=[], labels=[], parents=[], values=[], colors=[], text=[], custom=[], codes=[];
-  
-  // 대륙별로 그룹화
-  const groups = {};
-  filtered.forEach((r, i) => {
-    const cont = r.continent || 'Unknown';
-    if(!groups[cont]) groups[cont] = {countries: [], values: [], changes: [], codes: []};
-    groups[cont].countries.push(r.name);
-    groups[cont].values.push(Math.max(0.0001, isNaN(r.value)?0.0001:r.value));
-    groups[cont].changes.push(r.change != null && !isNaN(r.change) ? r.change : 0);
-    groups[cont].codes.push(r.code);
-  });
-  
-  // 대륙을 값 합계 기준으로 정렬
-  const continents = Object.keys(groups).sort((a,b) => {
-    const sumA = groups[a].values.reduce((x,y)=>x+y,0);
-    const sumB = groups[b].values.reduce((x,y)=>x+y,0);
-    return sumB - sumA;
-  });
 
-  continents.forEach(cont => {
-    const g = groups[cont];
-    const total = g.values.reduce((a,b)=>a+b,0);
-    const contId = `continent:${cont}`;
-    
-    // 대륙 노드 추가 (PUBGM_TRAFFIC 스타일)
-    const continentTextShadow = 'text-shadow: 2px 2px 4px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.6);';
-    ids.push(contId);
-    labels.push(cont);
-    parents.push('');
-    values.push(total);
-    colors.push('#262931');
-    text.push(`<b style="font-size:86.4px;font-weight:900;letter-spacing:2px;color:#FFFFFF;${continentTextShadow}">${cont}</b>`);
-    custom.push([null, null, cont]);
-    codes.push('');
-    
-    // 국가별 최대 변화량 계산 (색상 강도용)
-    const maxAbsChange = g.changes.length > 0 ? Math.max(...g.changes.map(c => Math.abs(c))) : 1;
-    const small = 0.010; // threshold for showing change percentage
-    const countryFontSize = 20; // 고정 폰트 크기
-    
-    g.countries.forEach((country, i) => {
-      const revenue = g.values[i];
-      const change = g.changes[i];
-      const share = revenue / total;
-      const code = g.codes[i];
-      
-      // 변화량에 따른 강도 계산
-      const changeIntensity = maxAbsChange > 0 ? Math.abs(change) / maxAbsChange : 0;
-      const col = colorFromChange(change, changeIntensity);
-      
-      ids.push(`country:${cont}:${country}`);
-      labels.push(country);
-      parents.push(contId);
-      values.push(revenue);
-      colors.push(col);
-      codes.push(code);
-      
-      // 텍스트 생성 (PUBGM_TRAFFIC 스타일)
-      const textShadow = 'text-shadow: 1px 1px 3px rgba(0,0,0,0.7), 0 0 4px rgba(0,0,0,0.5);';
-      let t = '';
-      if(share >= small){
-        t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b><br><b style="font-size:${Math.max(12,countryFontSize*0.75)}px;font-weight:bold;color:#FFFFFF;${textShadow}">${change>=0?'+':''}${change.toFixed(1)}%</b>`;
-      } else {
-        t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b>`;
-      }
-      text.push(t);
-      custom.push([change, revenue, cont]);
+  if(groupBy){
+    const groups={};
+    stats.topCountries.forEach((c,i)=>{ const G=getContinent(c); (groups[G]||(groups[G]={c:[],v:[],chg:[]})).c.push(c); groups[G].v.push(stats.topRevenue[i]); groups[G].chg.push(stats.topChange[i]); });
+    const continents=Object.keys(groups).sort((a,b)=> groups[b].v.reduce((x,y)=>x+y,0)-groups[a].v.reduce((x,y)=>x+y,0));
+
+    continents.forEach(cont=>{
+      const g=groups[cont];
+      const total=g.v.reduce((a,b)=>a+b,0);
+      const contId=`continent:${cont}`;
+      const continentTextShadow = 'text-shadow: 2px 2px 4px rgba(0,0,0,0.7), 0 0 6px rgba(0,0,0,0.6);';
+      ids.push(contId); labels.push(cont); parents.push(''); values.push(total); colors.push('#262931'); text.push(`<b style="font-size:86.4px;font-weight:900;letter-spacing:2px;color:#FFFFFF;${continentTextShadow}">${cont}</b>`); custom.push([null,null,cont]);
+      codes.push('');
+
+      const small=0.010, medium=0.025;
+      const maxAbsChange = g.chg.length > 0 ? Math.max(...g.chg.map(c => Math.abs(c))) : 1;
+      const countryFontSize = 20;
+      g.c.forEach((country,i)=>{
+        const revenue=g.v[i];
+        const change=g.chg[i];
+        const share=revenue/total;
+        const changeIntensity = maxAbsChange > 0 ? Math.abs(change) / maxAbsChange : 0;
+        const col=colorFromChange(change, changeIntensity);
+        ids.push(`country:${cont}:${country}`);
+        labels.push(country);
+        parents.push(contId);
+        values.push(revenue);
+        colors.push(col);
+        codes.push(''); // 국가 코드는 나중에 매핑
+        let t='';
+        const textShadow = 'text-shadow: 1px 1px 3px rgba(0,0,0,0.7), 0 0 4px rgba(0,0,0,0.5);';
+        if(share>=small){
+          t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b><br><b style="font-size:${Math.max(12,countryFontSize*0.75)}px;font-weight:bold;color:#FFFFFF;${textShadow}">${change>=0?'+':''}${change.toFixed(1)}%</b>`;
+        }else{
+          t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b>`;
+        }
+        text.push(t);
+        custom.push([change, revenue, cont]);
+      });
     });
-  });
+  } else {
+    const total = stats.topRevenue.reduce((a,b)=>a+b,0);
+    const small=0.006;
+    const maxAbsChange = stats.topChange.length > 0 ? Math.max(...stats.topChange.map(c => Math.abs(c))) : 1;
+    const countryFontSize = 20;
+    stats.topCountries.forEach((country,i)=>{
+      const rev=stats.topRevenue[i]; const ch=stats.topChange[i]; const share=rev/total; const cont=getContinent(country);
+      const changeIntensity = maxAbsChange > 0 ? Math.abs(ch) / maxAbsChange : 0;
+      const col = colorFromChange(ch, changeIntensity);
+      ids.push(`country::${country}`); labels.push(country); parents.push(''); values.push(rev); colors.push(col);
+      codes.push('');
+      let t='';
+      const textShadow = 'text-shadow: 1px 1px 3px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.7);';
+      if(share>=small) t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b><br><b style="font-size:${Math.max(12,countryFontSize*0.75)}px;font-weight:bold;color:#FFFFFF;${textShadow}">${ch>=0?'+':''}${ch.toFixed(1)}%</b>`;
+      else t = `<b style="font-size:${countryFontSize}px;font-weight:bold;color:#FFFFFF;${textShadow}">${country}</b>`;
+      text.push(t);
+      custom.push([ch, rev, cont]);
+    });
+  }
 
-  const height = 900; // fixed height (PUBGM_TRAFFIC style)
+  const height = 900;
 
-  const trace = {
+  const trace={
     type:'treemap',
     ids, labels, parents, values,
     text, textinfo:'text', textposition:'middle center',
-    marker:{ 
-      colors, 
-      line:{width:1, color:'#000000'}, 
-      depthfade:false 
-    },
+    marker:{ colors, line:{width:1, color:'#000000'}, depthfade:false },
     tiling:{ pad: 1 },
-    branchvalues:'total', 
-    maxdepth: 2,
-    hovertemplate:'<b>%{label}</b><br>값: %{value:,.0f}<br>Change: %{customdata[0]:.2f}%<br>Sector: %{customdata[2]}<extra></extra>',
+    branchvalues:'total', maxdepth: groupBy ? 2 : 1,
+    hovertemplate:'<b>%{label}</b><br>Traffic: %{value:,.0f}<br>'+
+                  'Change: %{customdata[0]:.2f}%<br>Sector: %{customdata[2]}<extra></extra>',
     customdata: custom,
     pathbar:{visible:false}
   };
 
-  const layout = {
+  const layout={
     paper_bgcolor: '#262931',
     plot_bgcolor: '#262931',
-    margin:{l:0,r:0,t:0,b:0}, 
-    height,
+    margin:{l:0,r:0,t:0,b:0}, height,
     font:{family:'Arial, Helvetica, sans-serif',size:11,color:'#FFFFFF'},
     hoverlabel:{bgcolor:'#161b22',bordercolor:'#30363d',font:{color:'#fff'}}
   };
 
-  Plotly.newPlot('heatmap', [trace], layout, {
-    responsive:true,
-    displayModeBar:false
-  }).then(() => {
-    // Plotly 이벤트 핸들러
+  Plotly.newPlot('heatmap',[trace],layout,{responsive:true}).then(()=>{
     heatmapDiv.on('plotly_click', (ev) => {
       if(!ev || !ev.points || !ev.points.length) return;
       const p = ev.points[0];
       if(!p) return;
-      const idx = p.pointNumber !== undefined ? p.pointNumber : p.pointIndex;
-      const code = codes[idx];
+      const label = p.label;
+      // 국가 이름으로 코드 찾기
+      const codeCol = state.cols.code;
+      const nameCol = state.cols.name;
+      let code = null;
+      for(const r of state.metrics){
+        const name = nameCol ? String(r[nameCol]||'') : '';
+        if(name === label){
+          code = codeCol ? String(r[codeCol]||'').toUpperCase() : null;
+          break;
+        }
+      }
       if(code){ 
         selectCountry(code); 
         switchTab('tab-country'); 
